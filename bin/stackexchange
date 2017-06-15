@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+set -eufo pipefail
+trap 'echo "$0: line ${LINENO}: exiting because of error";exit 1' ERR
+
+while getopts "xa:" options; do case $options in
+  a) a="$OPTARG" ;;
+  x) set -x ;;
+esac; done; shift $((OPTIND - 1))
+
+[[ -r ~/.$(basename ${0})rc ]] && { source ~/.$(basename ${0})rc; }
+: ${a:="default for var a"}
+
+if [[ "$#" -eq 0 ]];then :
+elif [[ "${1:-}" == "bla" ]];then shift
+  echo "bla"
+
+else
+  echo "unknown command: $1"
+
+fi
+
