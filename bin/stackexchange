@@ -2,28 +2,40 @@
 
 set -eufo pipefail
 trap 'echo "$0: error at line ${LINENO}: >$(cat $0 | sed -n "${LINENO}p")<"; exit 1' ERR
-hash jq 2>/dev/null
 
-while getopts "x:p:s:t:" options; do case $options in
+while getopts "x:i:p:l:t:b:" options; do case $options in
   p) page="$OPTARG" ;;
-  s) pagesize="$OPTARG" ;;
-  t) tags="$OPTARG" ;;
+  l) pagesize="$OPTARG" ;;
+  t) title_query="$OPTARG" ;;
+  b) body_query="$OPTARG" ;;
+  i) include_tags="$OPTARG" ;;
   x) exclude_tags="$OPTARG" ;;
 esac; done; shift $((OPTIND - 1))
 
 [[ -r ~/.$(basename ${0})rc ]] && { source ~/.$(basename ${0})rc; }
 : ${page:="1"}
 : ${pagesize:="5"}
+: ${min_answer_count:="1"}
 : ${site:="stackoverflow"}
-: ${tags:=""}
+: ${sort:="votes"} #relevance votes activity
+: ${include_tags:=""}
 : ${exclude_tags:=""}
+: ${debug:=0}
+: ${short:=0}
+: ${raw:=0}
+: ${title_query:=""}
+: ${body_query:=""}
+: ${COLUMNS:="$(tput cols)"}
+
+if [[ "$debug" -eq 1 ]];then set -x ; fi
 
 if [[ "$#" -eq 0 ]];then :
 
 elif [[ "$1" == "sites" ]];then shift
   curl -s \
     --compressed \
-  "https://api.stackexchange.com/2.2/sites?access_token=${access_token}&key=${application_key}\
+  "https://api.stackexchange.com/2.2/sites\
+?access_token=${access_token}&key=${application_key}\
 &page=${page}\
 &pagesize=${pagesize}\
 " \
@@ -32,81 +44,116 @@ elif [[ "$1" == "sites" ]];then shift
 elif [[ "$1" == "site_info" ]];then shift
   curl -s \
     --compressed \
-    "https://api.stackexchange.com/2.2/info?site=${site}&access_token=${access_token}&key=${application_key}"
+    "https://api.stackexchange.com/2.2/info\
+?access_token=${access_token}&key=${application_key}\
+&site=${site}\
+"
 
 elif [[ "$1" == "search" ]];then shift
-  [[ -n "$tags" ]] && { : ${tags_query:="&tagged=${tags}"}; }
-  : ${tags_query:=""}
-  [[ -n "$exclude_tags" ]] && { : ${exclude_tags_query:="&nottagged=${exclude_tags}"}; }
-  : ${exclude_tags_query:=""}
-  [[ -n "$exclude_tags" ]] && { : ${exclude_tags_query:="&nottagged=${exclude_tags}"}; }
-  curl -s \
+
+  : ${query:="$@"}
+  result="$( curl -s \
     --compressed \
     "https://api.stackexchange.com/2.2/search/excerpts\
 ?access_token=${access_token}&key=${application_key}\
 &site=${site}\
 &page=${page}\
 &pagesize=${pagesize}\
-${tags_query}\
-${exclude_tags_query}\
 &order=desc\
-&sort=relevance\
-&q=jvm+thread+kill\
+&sort=votes\
+&answers=${min_answer_count}\
+&tagged=${include_tags}\
+&nottagged=${exclude_tags}\
 &filter=withbody\
+&q=$(urlencode ${query// /+})\
+&title=$(urlencode ${title_query})\
+&body=$(urlencode ${body_query})\
 "
-#   \
-# | jq -M '.items|map({question_id,title,answer_count,score})[]'
+)"
 
-# &filter=withbody\
-# &title=jvm&title=kill&title=thread\
-# &q=$(urlencode $@)\
-# &order=desc\
-# &sort=relevance\
-# &answers=3\
-# &order=asc\
-# &order=desc\
-# &sort=votes\
-# &sort=activity\
-# &title=$(urlencode $@)\
+  quota="$(jq -r '.quota_remaining' <<<"$result")"
+  echo "remaining daily quota: $quota" >&2
 
-      # "last_activity_date": 1497253058,
-      # "creation_date": 1490003714,
-      # "question_id": 42900473,
-      # "link": "https://stackoverflow.com/questions/42900473/kafka-consumers-throwing-java-lang-outofmemoryerror-direct-buffer-memory",
-      # "title": "Kafka Consumers throwing java.lang.OutOfMemoryError: Direct buffer memory"
+  if [[ "$short" -eq 1 ]];then
+    echo "$result" \
+      | jq -M ".items\
+|map({\
+question_id,\
+score,\
+question_score,\
+answer_count,\
+tags:(.tags|join(\",\")),\
+title:(.title[0:$((COLUMNS-15))]),\
+body:(.body[0:$((COLUMNS-15))])\
+})[]"
 
-# ${FROM}\
-#   f ) FROM="&fromdate=$OPTARG" ;;
+  # "last_activity_date": 1440708621,
+  #   "creation_date": 1440697554,
+
+  else
+    if [[ "$raw" -eq 1 ]];then
+      echo "$result"
+    else
+      echo "$result" \
+      | jq -M '.items' \
+      | linecut
+    fi
+  fi
 
 elif [[ "$1" == "question" ]];then shift
-  curl -s \
+  : ${question_id:="$1"} ; shift
+
+  question_result="$(curl -s \
     --compressed \
-    "https://api.stackexchange.com/2.2/questions/181615?access_token=${access_token}&key=${application_key}\
+    "https://api.stackexchange.com/2.2/questions/${question_id}\
+?access_token=${access_token}&key=${application_key}\
 &site=${site}\
 &filter=withbody\
-"
-  curl -s \
+" )"
+  answers_result="$(curl -s \
     --compressed \
-    "https://api.stackexchange.com/2.2/questions/181615/answers?access_token=${access_token}&key=${application_key}\
+    "https://api.stackexchange.com/2.2/questions/${question_id}/answers\
+?access_token=${access_token}&key=${application_key}\
+&page=${page}\
+&pagesize=${pagesize}\
 &site=${site}\
 &filter=withbody\
-" \
-| jq -M -r '.items|map(.body)[]'
+" )"
+
+  quota="$(jq -r '.quota_remaining' <<<"$answers_result")"
+  echo "remaining daily quota: $quota" >&2
+
+  if [[ "$short" -eq 1 ]];then
+    echo "$question_result" \
+      | jq -M ".items\
+|map({\
+question_id,\
+answer_count,\
+tags:(.tags|join(\",\")),\
+title:(.title[0:$((COLUMNS-15))]),\
+body:(.body[0:$((COLUMNS-15))])\
+})[]"
+# score,\
+# question_score,\
+
+    echo "$answers_result" \
+      | jq -M ".items\
+|map({\
+body:(.body[0:$((COLUMNS-15))])\
+})[]"
+# answer_id,\
+# question_id,\
+# score,\
+
+  else
+    echo "$question_result"
+    echo "$answers_result"
+  fi
 
 else
   echo "unknown command: $1"
 
 fi
 
-
 # <https://api.stackexchange.com/docs/advanced-search#
-# order=desc&
-# sort=activity&
-# title=bash%20history%20directory
-# &filter=default
-# &site=stackoverflow
-# &run=true>
-# # 57818  16-07-15T12:52:21 stackexchangesearch -h superuser
-# "&title=bash&title=history&title=directory" | vim -c ':% ! jq -s ".[].title"'
-# -c ':set hls' -
-#
+
