@@ -52,7 +52,7 @@ ${exclude_tags_query}\
 &order=desc\
 &sort=relevance\
 &q=jvm+thread+kill\
-&filter=total\
+&filter=withbody\
 "
 #   \
 # | jq -M '.items|map({question_id,title,answer_count,score})[]'
