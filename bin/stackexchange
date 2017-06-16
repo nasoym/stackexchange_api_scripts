@@ -26,9 +26,10 @@ esac; done; shift $((OPTIND - 1))
 : ${short:=1}
 : ${raw:=0}
 : ${limit_lines:=1}
+: ${jq_date_format:="%Y-%m-%dT%H:%M"}
 
 if [[ "$limit_lines" -eq 1 ]];then 
-  : ${last_body_char:="$(( $(tput cols) - 15 ))"}
+  : ${last_body_char:="$(( $(tput cols) - 20 ))"}
 fi
 : ${last_body_char:="-1"}
 
@@ -79,9 +80,6 @@ elif [[ "$1" == "search" ]];then shift
 "
 )"
 
-  quota="$(jq -r '.quota_remaining' <<<"$result")"
-  echo "remaining daily quota: $quota" >&2
-
   if [[ "$short" -eq 1 ]];then
     echo "$result" \
       | jq -M ".items\
@@ -89,14 +87,12 @@ elif [[ "$1" == "search" ]];then shift
 question_id,\
 answer_count,\
 tags:(.tags|join(\",\")),\
+creation_date:(.creation_date|strftime(\"${jq_date_format}\")),\
 title:(.title[0:${last_body_char}]),\
 body:(.body[0:${last_body_char}])\
 })"
 # score,\
 # question_score,\
-
-  # "last_activity_date": 1440708621,
-  #   "creation_date": 1440697554,
 
   else
     if [[ "$raw" -eq 1 ]];then
@@ -107,6 +103,9 @@ body:(.body[0:${last_body_char}])\
       | linecut
     fi
   fi
+
+  quota="$(jq -r '.quota_remaining' <<<"$result")"
+  echo "remaining daily quota: $quota" >&2
 
 elif [[ "$1" == "question" ]];then shift
   : ${question_id:="$1"} ; shift
@@ -128,9 +127,6 @@ elif [[ "$1" == "question" ]];then shift
 &filter=withbody\
 " )"
 
-  quota="$(jq -r '.quota_remaining' <<<"$answers_result")"
-  echo "remaining daily quota: $quota" >&2
-
   if [[ "$short" -eq 1 ]];then
     echo "$question_result" \
       | jq -M --argjson answers "${answers_result}" ".items\
@@ -139,26 +135,21 @@ question_id,\
 answer_count,\
 tags:(.tags|join(\",\")),\
 title:(.title[0:${last_body_char}]),\
+creation_date:(.creation_date|strftime(\"${jq_date_format}\")),\
 body:(.body[0:${last_body_char}]),\
-answers:(\$answers|.items|map(.body[0:${last_body_char}]))\
+answers:(\$answers|.items|map({\
+creation_date:(.creation_date|strftime(\"${jq_date_format}\")),\
+body:.body[0:${last_body_char}]\
+}))\
 })[]"
-# answers:(\$answers|.items|map({.body[0:${last_body_char}]}))\
-# score,\
-# question_score,\
-
-#     echo "$answers_result" \
-#       | jq -M ".items\
-# |map({\
-# body:(.body[0:${last_body_char}])\
-# })[]"
-# answer_id,\
-# question_id,\
-# score,\
 
   else
     echo "$question_result"
     echo "$answers_result"
   fi
+
+  quota="$(jq -r '.quota_remaining' <<<"$answers_result")"
+  echo "remaining daily quota: $quota" >&2
 
 elif [[ "$1" =~ ^[0-9]*$ ]];then 
   $0 question $1
