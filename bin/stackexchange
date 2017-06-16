@@ -133,22 +133,24 @@ elif [[ "$1" == "question" ]];then shift
 
   if [[ "$short" -eq 1 ]];then
     echo "$question_result" \
-      | jq -M ".items\
+      | jq -M --argjson answers "${answers_result}" ".items\
 |map({\
 question_id,\
 answer_count,\
 tags:(.tags|join(\",\")),\
 title:(.title[0:${last_body_char}]),\
-body:(.body[0:${last_body_char}])\
+body:(.body[0:${last_body_char}]),\
+answers:(\$answers|.items|map(.body[0:${last_body_char}]))\
 })[]"
+# answers:(\$answers|.items|map({.body[0:${last_body_char}]}))\
 # score,\
 # question_score,\
 
-    echo "$answers_result" \
-      | jq -M ".items\
-|map({\
-body:(.body[0:${last_body_char}])\
-})[]"
+#     echo "$answers_result" \
+#       | jq -M ".items\
+# |map({\
+# body:(.body[0:${last_body_char}])\
+# })[]"
 # answer_id,\
 # question_id,\
 # score,\
@@ -158,8 +160,11 @@ body:(.body[0:${last_body_char}])\
     echo "$answers_result"
   fi
 
+elif [[ "$1" =~ ^[0-9]*$ ]];then 
+  $0 question $1
+
 else
-  echo "unknown command: $1"
+  $0 search $@
 
 fi
 
