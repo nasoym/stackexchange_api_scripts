@@ -14,18 +14,23 @@ esac; done; shift $((OPTIND - 1))
 
 [[ -r ~/.$(basename ${0})rc ]] && { source ~/.$(basename ${0})rc; }
 : ${page:="1"}
-: ${pagesize:="5"}
+: ${pagesize:="10"}
 : ${min_answer_count:="1"}
-: ${site:="stackoverflow"}
-: ${sort:="votes"} #relevance votes activity
+: ${site:="stackoverflow"} # superuser serverfault askubuntu unix softwareengineering raspberrypi security devops vi
+: ${sort:="votes"} # relevance votes activity
 : ${include_tags:=""}
 : ${exclude_tags:=""}
-: ${debug:=0}
-: ${short:=0}
-: ${raw:=0}
 : ${title_query:=""}
 : ${body_query:=""}
-: ${COLUMNS:="$(tput cols)"}
+: ${debug:=0}
+: ${short:=1}
+: ${raw:=0}
+: ${limit_lines:=1}
+
+if [[ "$limit_lines" -eq 1 ]];then 
+  : ${last_body_char:="$(( $(tput cols) - 15 ))"}
+fi
+: ${last_body_char:="-1"}
 
 if [[ "$debug" -eq 1 ]];then set -x ; fi
 
@@ -39,7 +44,11 @@ elif [[ "$1" == "sites" ]];then shift
 &page=${page}\
 &pagesize=${pagesize}\
 " \
-| jq -M -r '.items|map(.api_site_parameter)[]'
+| jq -M -r ".items|map({\
+api_site_parameter\
+,name\
+,audience\
+})"
 
 elif [[ "$1" == "site_info" ]];then shift
   curl -s \
@@ -50,7 +59,6 @@ elif [[ "$1" == "site_info" ]];then shift
 "
 
 elif [[ "$1" == "search" ]];then shift
-
   : ${query:="$@"}
   result="$( curl -s \
     --compressed \
@@ -79,13 +87,13 @@ elif [[ "$1" == "search" ]];then shift
       | jq -M ".items\
 |map({\
 question_id,\
-score,\
-question_score,\
 answer_count,\
 tags:(.tags|join(\",\")),\
-title:(.title[0:$((COLUMNS-15))]),\
-body:(.body[0:$((COLUMNS-15))])\
-})[]"
+title:(.title[0:${last_body_char}]),\
+body:(.body[0:${last_body_char}])\
+})"
+# score,\
+# question_score,\
 
   # "last_activity_date": 1440708621,
   #   "creation_date": 1440697554,
@@ -130,8 +138,8 @@ elif [[ "$1" == "question" ]];then shift
 question_id,\
 answer_count,\
 tags:(.tags|join(\",\")),\
-title:(.title[0:$((COLUMNS-15))]),\
-body:(.body[0:$((COLUMNS-15))])\
+title:(.title[0:${last_body_char}]),\
+body:(.body[0:${last_body_char}])\
 })[]"
 # score,\
 # question_score,\
@@ -139,7 +147,7 @@ body:(.body[0:$((COLUMNS-15))])\
     echo "$answers_result" \
       | jq -M ".items\
 |map({\
-body:(.body[0:$((COLUMNS-15))])\
+body:(.body[0:${last_body_char}])\
 })[]"
 # answer_id,\
 # question_id,\
