@@ -90,7 +90,7 @@ tags:(.tags|join(\",\")),\
 creation_date:(.creation_date|strftime(\"${jq_date_format}\")),\
 title:(.title[0:${last_body_char}]),\
 body:(.body[0:${last_body_char}])\
-})"
+})|reverse"
 # score,\
 # question_score,\
 
