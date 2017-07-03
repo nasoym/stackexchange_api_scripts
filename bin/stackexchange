@@ -82,12 +82,12 @@ elif [[ "$1" == "search" ]];then shift
 
   if [[ "$short" -eq 1 ]];then
     echo "$result" \
-      | jq -M ".items\
+      | jq -M ".items?\
 |map({\
 question_id,\
 answer_count,\
-tags:(.tags|join(\",\")),\
-creation_date:(.creation_date|strftime(\"${jq_date_format}\")),\
+tags:(.tags?|join(\",\")),\
+creation_date:(.creation_date?|strftime(\"${jq_date_format}\")),\
 title:(.title[0:${last_body_char}]),\
 body:(.body[0:${last_body_char}])\
 })|reverse"
