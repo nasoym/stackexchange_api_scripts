@@ -3,9 +3,9 @@
 set -eufo pipefail
 trap 'echo "$0: error at line ${LINENO}: >$(cat $0 | sed -n "${LINENO}p")<"; exit 1' ERR
 
-while getopts "x:i:p:l:t:b:" options; do case $options in
+while getopts "x:i:p:s:t:b:" options; do case $options in
   p) page="$OPTARG" ;;
-  l) pagesize="$OPTARG" ;;
+  s) pagesize="$OPTARG" ;;
   t) title_query="$OPTARG" ;;
   b) body_query="$OPTARG" ;;
   i) include_tags="$OPTARG" ;;
